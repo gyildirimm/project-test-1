@@ -11,7 +11,7 @@ public sealed record ImportSummaryDto(int TotalRows, int Valid, int Invalid, int
 
 public sealed record ImportPreviewDto(Guid ImportId, DateTimeOffset ExpiresAt, ImportSummaryDto Summary, IReadOnlyList<ImportRowDto> Rows);
 
-public sealed record ImportCommitSkippedDto(int DuplicateInFile, int AlreadyExists);
+public sealed record ImportCommitSkippedDto(int Invalid, int DuplicateInFile, int AlreadyExists);
 
 public sealed record ImportCommitDto(Guid ImportId, int Imported, ImportCommitSkippedDto Skipped, IReadOnlyList<int> CreatedIds);
 

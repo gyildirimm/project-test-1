@@ -73,19 +73,19 @@ public class PersonImportEndpointTests : IClassFixture<WebApplicationFactory<Pro
     }
 
     [Fact]
-    public async Task CommitWithInvalidRowsIsRejectedWithLines()
+    public async Task CommitImportsValidRowsAndSkipsInvalidOnes()
     {
         var client = NewClient();
         var preview = await ReadJson(await client.PostAsync("/api/people/imports/preview",
-            CsvUpload("first_name,last_name,email\nOk,Person,ok.invalid@example.com\n,Missing,bad-email\n")));
+            CsvUpload("first_name,last_name,email\nOk,Person,partial.valid@example.com\n,Missing,bad-email\n")));
         var url = $"/api/people/imports/{preview.GetProperty("importId").GetGuid()}/commit";
 
         var response = await client.PostAsync(url, null);
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        var error = (await ReadJson(response)).GetProperty("error");
-        Assert.Equal("IMPORT_HAS_INVALID_ROWS", error.GetProperty("code").GetString());
-        Assert.Equal(3, error.GetProperty("details")[0].GetProperty("line").GetInt32());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var commit = await ReadJson(response);
+        Assert.Equal(1, commit.GetProperty("imported").GetInt32());
+        Assert.Equal(1, commit.GetProperty("skipped").GetProperty("invalid").GetInt32());
     }
 
     [Fact]

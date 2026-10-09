@@ -50,14 +50,14 @@ Success: `200 OK`
 {
   "importId": "3f2b9c1e-0d4a-4a7e-9a55-1b2c3d4e5f60",
   "imported": 1,
-  "skipped": { "duplicateInFile": 1, "alreadyExists": 0 },
+  "skipped": { "invalid": 1, "duplicateInFile": 1, "alreadyExists": 0 },
   "createdIds": [1]
 }
 ```
 
-- Imports every row whose status was `valid` at preview time. Existence is re-checked at commit, so a row that became a duplicate in the meantime is counted under `skipped.alreadyExists` instead of being created.
-- Duplicate-in-file rows and already-existing rows are skipped, not errors.
-- A commit is **all-or-nothing on validity**: if the preview has any `invalid` row, the commit is refused (409) and nothing is imported. The user must fix the file and preview again.
+- Imports every row whose status was `valid` at preview time; invalid rows are skipped. The commit is **not blocked** by invalid rows.
+- Existence is re-checked at commit, so a row that became a duplicate in the meantime is counted under `skipped.alreadyExists` instead of being created.
+- `skipped.invalid`, `skipped.duplicateInFile`, `skipped.alreadyExists` give the per-reason counts for the summary; the per-row reasons are in the preview's `rows`.
 - An import can be committed once.
 
 ### 3. `GET /api/people`
@@ -128,7 +128,6 @@ All errors (except the framework-level body-size cut-off above) use:
 | 400  | `CSV_DUPLICATE_COLUMN`     | Same header column twice                                           | `[{ line, column }]`               |
 | 404  | `IMPORT_NOT_FOUND`         | Unknown `importId` (or never created)                              | —                                  |
 | 409  | `IMPORT_ALREADY_COMMITTED` | Commit called again for the same `importId`                        | —                                  |
-| 409  | `IMPORT_HAS_INVALID_ROWS`  | Commit when the preview has any `invalid` row                      | `[{ line, errors: RowError[] }]`   |
 | 410  | `IMPORT_EXPIRED`           | Commit after the 15-minute preview window                          | —                                  |
 | 413  | `CSV_FILE_TOO_LARGE`       | File over 1 MiB                                                    | —                                  |
 | 422  | `CSV_TOO_MANY_ROWS`        | More than 1000 data rows                                           | —                                  |
@@ -139,7 +138,6 @@ Row error codes (in `rows[].errors[].code`): `REQUIRED`, `TOO_LONG`, `INVALID_EM
 
 - **Persistence:** people live in an in-memory repository (`IPersonRepository`). Restarting the server clears them. Previews are also in-memory, so a restart invalidates pending `importId`s. No EF Core/SQLite is wired yet, because the repo has no person/CRM domain or schema to build on.
 - **Authentication / authorization:** none. Any caller can upload and commit.
-- **Partial commits:** there is no "import only the valid rows" option; any invalid row blocks the commit.
 - **Other delimiters** (`;`, tab), **other encodings** (UTF-16, Windows-1254), **Excel files**, and **extra columns** (e.g. company, address).
 - **Phone normalization** (E.164 conversion): the phone is stored as typed, trimmed.
 - **Update of existing people:** an existing email is skipped, never updated.

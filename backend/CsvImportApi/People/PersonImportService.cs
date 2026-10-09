@@ -72,15 +72,8 @@ public sealed class PersonImportService(IPersonRepository people, TimeProvider t
                     "This preview has expired. Upload the file again.");
             }
 
-            var invalid = stored.Rows.Where(r => r.Status == ImportRowStatus.Invalid).ToList();
-            if (invalid.Count > 0)
-            {
-                throw new ImportException(409, ImportErrorCodes.ImportHasInvalidRows,
-                    "Fix the invalid rows and upload the file again.",
-                    invalid.Select(r => (object)new { line = r.Line, errors = r.Errors }).ToList());
-            }
-
             var createdIds = new List<int>();
+            var invalid = 0;
             var duplicateInFile = 0;
             var alreadyExists = 0;
 
@@ -88,6 +81,9 @@ public sealed class PersonImportService(IPersonRepository people, TimeProvider t
             {
                 switch (row.Status)
                 {
+                    case ImportRowStatus.Invalid:
+                        invalid++;
+                        break;
                     case ImportRowStatus.DuplicateInFile:
                         duplicateInFile++;
                         break;
@@ -112,7 +108,7 @@ public sealed class PersonImportService(IPersonRepository people, TimeProvider t
             stored.Committed = true;
 
             return new ImportCommitDto(importId, createdIds.Count,
-                new ImportCommitSkippedDto(duplicateInFile, alreadyExists), createdIds);
+                new ImportCommitSkippedDto(invalid, duplicateInFile, alreadyExists), createdIds);
         }
     }
 

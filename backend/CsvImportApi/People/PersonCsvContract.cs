@@ -46,7 +46,6 @@ public static class ImportErrorCodes
     public const string ImportNotFound = "IMPORT_NOT_FOUND";
     public const string ImportExpired = "IMPORT_EXPIRED";
     public const string ImportAlreadyCommitted = "IMPORT_ALREADY_COMMITTED";
-    public const string ImportHasInvalidRows = "IMPORT_HAS_INVALID_ROWS";
 }
 
 public static class RowErrorCodes
