@@ -31,7 +31,7 @@ Example: `ConnectionStrings__Default="Data Source=/var/data/expenses.db" dotnet 
 | `amount` | decimal | required, > 0 (stored as decimal(18,2)) |
 | `date` | date | required, `YYYY-MM-DD` |
 | `status` | enum (stored and returned as string) | `Draft`, `Submitted`, `Approved`, `Rejected` |
-| `decisionReason` | string? | max 2000; meant for Rejected. Always null until a review endpoint exists |
+| `decisionReason` | string? | max 2000; set by `POST /api/approvals/{id}/reject`. Null otherwise |
 | `createdAt`, `updatedAt` | datetime with offset | server UTC, ISO 8601 (e.g. `2026-10-09T14:10:25.4776581+00:00`) |
 
 **StatusHistory** (permanent, one row per status change; removed with its expense)
@@ -41,13 +41,15 @@ Example: `ConnectionStrings__Default="Data Source=/var/data/expenses.db" dotnet 
 | `fromStatus` | enum or null | null for the creation entry |
 | `toStatus` | enum | |
 | `at` | datetime with offset | |
-| `actor` / `role` | string | stored as `employee` / `Employee` (no auth yet; constants in `StatusHistoryEntry`). Not returned by the API. |
-| `note` | string? | Not settable by any endpoint yet; always null in responses |
+| `actor` / `role` | string | `employee` / `Employee` for expense actions, `manager` / `Manager` for approve/reject (no auth yet; constants in `StatusHistoryEntry` and `ApprovalEndpoints`). Not returned by the API. |
+| `note` | string? | Optional on approve (`POST /api/approvals/{id}/approve`); always null for other transitions |
 
 ## Status transitions
 
 - `Draft -> Submitted` (via `POST /submit`)
-- `Submitted -> Approved | Rejected` is defined in the model (`ExpenseStatusRules`) but **has no endpoint yet**. Approved/Rejected are currently reachable only by writing the database directly.
+- `Submitted -> Approved` (via `POST /api/approvals/{id}/approve`)
+- `Submitted -> Rejected` (via `POST /api/approvals/{id}/reject`, reason required)
+- Approved and Rejected are final: any further approve/reject returns 409.
 - Every other transition is invalid and returns 409.
 - Only `Draft` expenses can be edited (PUT) or deleted (DELETE).
 
@@ -113,6 +115,42 @@ Detail and submit responses add a `history` array:
 ]
 ```
 
+## Approvals
+
+Base path: `/api/approvals`. Same JSON, error and history conventions as expenses. There is no authentication: every decision is recorded with actor `manager`, role `Manager`.
+
+### `GET /api/approvals/pending`
+- `200` with an array of Submitted expenses, oldest submission first:
+  `[{"id": GUID, "title": string, "amount": number, "date": "YYYY-MM-DD", "submittedAt": timestamp}]`
+- `submittedAt` is the timestamp of the most recent `Submitted` history entry.
+
+### `GET /api/approvals/{id}`
+- `200` with the same shape as `GET /api/expenses/{id}` (Expense + `history`, including `decisionReason`).
+- `404` if not found.
+
+### `POST /api/approvals/{id}/approve`
+Body optional: `{"note"?: string|null}`. Empty body is allowed. Blank note becomes null; max 2000.
+
+- `200` with Expense + `history` (the new `Approved` entry is last, with the note if one was given).
+- `404` not found; `409` if the expense is not Submitted (`{"message": "Only Submitted expenses can be approved; this expense is Approved."}`); `400` if `note` is not a string or is too long.
+- Check order: 404, 409, 400.
+
+### `POST /api/approvals/{id}/reject`
+Body: `{"reason": string}`. Required; trimmed; must not be blank; max 2000.
+
+- `200` with Expense + `history` and `decisionReason` set to the trimmed reason.
+- `404` not found; `409` if not Submitted; `400` `{"errors":{"Reason":["Reason is required."]}}` when the reason is missing, null, blank, or not a string.
+- Check order: 404, 409, 400.
+
+### `GET /api/approvals/summary`
+```json
+{
+  "countsByStatus": {"Draft": 1, "Submitted": 2, "Approved": 3, "Rejected": 1},
+  "approvedTotal": 101.00
+}
+```
+- All four status keys are always present (0 when empty). `approvedTotal` is the sum of `amount` over Approved expenses; 0 when there are none.
+
 ## Error format
 
 - **400 validation:** `{"errors": {"<Field>": ["message", ...]}}`. Field keys are PascalCase: `Title`, `Description`, `Amount`, `Date`, `Status`. A non-object body gives `{"errors":{"Body":[...]}}`. Wrong JSON types (e.g. `"amount": "10"`) are reported as field errors.
@@ -125,7 +163,9 @@ Malformed JSON syntax is rejected by ASP.NET before the handler runs and returns
 
 - Authentication/authorization; actor and role are fixed constants and not exposed.
 - File attachments, Docker, CI, deployment.
-- Approve/reject endpoints, `decisionReason` writes, and notes on transitions.
+- Notes on reject (the reason is stored in `decisionReason` instead).
+- Locking against concurrent decisions on the same expense: the status check and save are not atomic (see Approvals).
 - Pagination, sorting parameters, and filters other than `status`.
 - EF Core migrations: the schema is created with `EnsureCreated()`. Before the first schema change to a deployed database, switch to migrations.
+- Listing and approval summary sum amounts in memory, because SQLite cannot translate `decimal` aggregates. Fine for small data.
 - Listing sorts in memory, because SQLite cannot order `DateTimeOffset` in SQL. Fine for small data; revisit if the list grows.
