@@ -19,6 +19,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapExpenseEndpoints();
+app.MapApprovalEndpoints();
 
 app.Run();
 

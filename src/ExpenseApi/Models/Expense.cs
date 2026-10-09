@@ -48,7 +48,7 @@ public class Expense
     }
 
     /// <summary>Moves to <paramref name="to"/> and appends a history entry. Returns false if the transition is not allowed.</summary>
-    public bool TryTransition(ExpenseStatus to, DateTimeOffset now, string? note = null)
+    public bool TryTransition(ExpenseStatus to, DateTimeOffset now, string? note = null, string? actor = null, string? role = null)
     {
         if (!ExpenseStatusRules.CanTransition(Status, to))
         {
@@ -61,6 +61,8 @@ public class Expense
             ToStatus = to,
             At = now,
             Note = note,
+            Actor = actor ?? StatusHistoryEntry.DefaultActor,
+            Role = role ?? StatusHistoryEntry.DefaultRole,
         });
         Status = to;
         UpdatedAt = now;
