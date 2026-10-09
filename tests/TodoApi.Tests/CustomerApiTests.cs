@@ -430,4 +430,30 @@ public class CustomerApiTests : IDisposable
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("error").GetString()));
     }
+
+    // ---------- CORS ----------
+
+    [Theory]
+    [InlineData("http://localhost:8080")]
+    [InlineData("http://127.0.0.1:5500")]
+    public async Task Cors_AllowsLocalOrigins(string origin)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/customers");
+        request.Headers.Add("Origin", origin);
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+    }
+
+    [Fact]
+    public async Task Cors_DoesNotAllowOtherOrigins()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/customers");
+        request.Headers.Add("Origin", "https://evil.example");
+
+        var response = await _client.SendAsync(request);
+
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
 }

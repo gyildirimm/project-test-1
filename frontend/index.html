@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Customers</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="container">
+    <h1>Customers</h1>
+
+    <p id="error" class="error" role="alert" hidden></p>
+
+    <form id="customer-form" class="customer-form" novalidate>
+      <h2 id="form-title">Add customer</h2>
+
+      <div class="field">
+        <label for="name">Name <span aria-hidden="true">*</span></label>
+        <input id="name" name="name" type="text" autocomplete="off" required aria-required="true" aria-describedby="name-error">
+        <p id="name-error" class="field-error" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="off" aria-describedby="email-error">
+        <p id="email-error" class="field-error" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input id="phone" name="phone" type="tel" autocomplete="off" aria-describedby="phone-error">
+        <p id="phone-error" class="field-error" hidden></p>
+      </div>
+
+      <div class="form-actions">
+        <button id="submit-button" type="submit">Add customer</button>
+        <button id="cancel-button" type="button" hidden>Cancel</button>
+      </div>
+    </form>
+
+    <section class="list-section" aria-labelledby="list-title">
+      <div class="list-header">
+        <h2 id="list-title">Customer list</h2>
+        <div class="search">
+          <label for="search">Search by name or email</label>
+          <input id="search" type="search" autocomplete="off">
+        </div>
+      </div>
+
+      <p id="status" class="status" role="status" aria-live="polite">Loading customers…</p>
+
+      <table id="customer-table" class="customer-table" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Email</th>
+            <th scope="col">Phone</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="customer-rows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

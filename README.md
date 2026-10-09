@@ -27,13 +27,35 @@ for the default). To pick a port:
 dotnet run --project src/TodoApi --urls http://localhost:5000
 ```
 
+## Run the app (API and UI together)
+
+The UI is plain HTML/CSS/JS in `frontend/` with no build step. Run the two in
+separate terminals:
+
+```bash
+# terminal 1: API on http://localhost:5000
+dotnet run --project src/TodoApi --urls http://localhost:5000
+
+# terminal 2: UI on http://localhost:8080
+cd frontend && node serve.mjs
+```
+
+Open http://localhost:8080. The UI calls `API_BASE` in `frontend/app.js`, which
+defaults to `http://localhost:5000/api/customers`; change it if the API runs
+elsewhere. The API allows cross-origin calls from `localhost` and `127.0.0.1` only.
+
 ## Test
 
 ```bash
-dotnet test tests/TodoApi.Tests
+dotnet test tests/TodoApi.Tests                  # API tests
+
+cd frontend && npm install                       # UI tests (Playwright)
+npx playwright install chromium                  # first time only
+npm test
 ```
 
-Tests run the real app against temporary SQLite files; they do not touch your data.
+API tests run the real app against temporary SQLite files; they do not touch your data.
+UI tests run in a browser against a mocked API, so no backend is needed.
 
 ## Environment variables
 

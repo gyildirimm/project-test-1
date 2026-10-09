@@ -16,7 +16,16 @@ Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 builder.Services.AddDbContext<CustomerDbContext>(options =>
     options.UseSqlite(new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString()));
 
+// The browser UI is served from a different port in development, so allow localhost
+// origins only. Any other site must not be able to read or change customer data.
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+    .SetIsOriginAllowed(IsLocalOrigin)
+    .AllowAnyHeader()
+    .AllowAnyMethod()));
+
 var app = builder.Build();
+
+app.UseCors();
 
 // Unhandled exceptions get a generic 500 body; details go to the server log only.
 app.UseExceptionHandler(errors => errors.Run(async context =>
@@ -35,5 +44,9 @@ app.MapCustomerEndpoints();
 app.MapCustomerImportEndpoints();
 
 app.Run();
+
+static bool IsLocalOrigin(string origin) =>
+    Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+    && (uri.Host == "localhost" || uri.Host == "127.0.0.1");
 
 public partial class Program;
