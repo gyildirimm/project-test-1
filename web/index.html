@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harcama Yönetimi</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="config.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Harcama Yönetimi</h1>
+    <nav class="view-switch" aria-label="Görünüm seçimi">
+      <button type="button" data-view="employee" aria-pressed="true">Çalışan</button>
+      <button type="button" data-view="manager" aria-pressed="false">Yönetici</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Çalışan görünümü -->
+    <section id="employee-view" aria-labelledby="employee-title">
+      <h2 id="employee-title">Çalışan görünümü</h2>
+      <div class="layout">
+        <form id="expense-form" class="card" novalidate>
+          <h3 id="form-title">Yeni taslak</h3>
+
+          <div class="field">
+            <label for="expense-title">Başlık <span class="required">*</span></label>
+            <input id="expense-title" name="title" maxlength="200" autocomplete="off">
+            <p class="field-error" data-error-for="title" hidden></p>
+          </div>
+
+          <div class="field">
+            <label for="expense-description">Açıklama</label>
+            <textarea id="expense-description" name="description" rows="3" maxlength="2000"></textarea>
+            <p class="field-error" data-error-for="description" hidden></p>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="expense-amount">Tutar (TL) <span class="required">*</span></label>
+              <input id="expense-amount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal">
+              <p class="field-error" data-error-for="amount" hidden></p>
+            </div>
+            <div class="field">
+              <label for="expense-date">Tarih <span class="required">*</span></label>
+              <input id="expense-date" name="date" type="date">
+              <p class="field-error" data-error-for="date" hidden></p>
+            </div>
+          </div>
+
+          <p id="form-message" class="message" hidden></p>
+
+          <div class="actions">
+            <button type="submit" id="save-button" class="primary">Taslağı kaydet</button>
+            <button type="button" id="cancel-edit-button" hidden>Düzenlemeyi iptal et</button>
+          </div>
+        </form>
+
+        <div class="card">
+          <div class="toolbar">
+            <label>Durum
+              <select id="status-filter">
+                <option value="">Tümü</option>
+                <option value="Draft">Taslak</option>
+                <option value="Submitted">Onay bekliyor</option>
+                <option value="Approved">Onaylandı</option>
+                <option value="Rejected">Reddedildi</option>
+              </select>
+            </label>
+            <button type="button" id="refresh-expenses">Yenile</button>
+          </div>
+
+          <p id="action-message" class="message" hidden></p>
+          <p id="expense-list-status" class="message" role="status" hidden></p>
+          <ul id="expense-list" class="item-list" aria-label="Talep listesi"></ul>
+
+          <section id="expense-detail" class="detail" aria-label="Talep ayrıntısı" hidden>
+            <div class="detail-header">
+              <h3>Talep ayrıntısı</h3>
+              <button type="button" id="close-expense-detail">Kapat</button>
+            </div>
+            <div id="expense-detail-body"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- Yönetici görünümü -->
+    <section id="manager-view" aria-labelledby="manager-title" hidden>
+      <h2 id="manager-title">Yönetici görünümü</h2>
+
+      <div class="summary-header">
+        <button type="button" id="refresh-manager">Yenile</button>
+      </div>
+      <p id="summary-message" class="message" hidden></p>
+      <div id="summary" class="summary" aria-label="Özet"></div>
+
+      <div class="layout">
+        <div class="card">
+          <h3>Onay bekleyen talepler</h3>
+          <p id="pending-status" class="message" role="status" hidden></p>
+          <ul id="pending-list" class="item-list" aria-label="Onay bekleyen talepler"></ul>
+        </div>
+
+        <section id="manager-detail" class="card detail" aria-label="Talep incelemesi" hidden>
+          <div class="detail-header">
+            <h3>Talep incelemesi</h3>
+            <button type="button" id="close-manager-detail">Kapat</button>
+          </div>
+          <div id="manager-detail-body"></div>
+          <p id="manager-detail-message" class="message" role="status" hidden></p>
+
+          <div id="decision-area" hidden>
+            <div class="actions">
+              <button type="button" id="approve-button" class="primary">Onayla</button>
+            </div>
+            <form id="reject-form" class="reject-form" novalidate>
+              <div class="field">
+                <label for="reject-reason">Red gerekçesi <span class="required">*</span></label>
+                <textarea id="reject-reason" name="reason" rows="3" maxlength="2000"></textarea>
+                <p class="field-error" data-error-for="reason" hidden></p>
+              </div>
+              <div class="actions">
+                <button type="submit" id="reject-button" class="danger">Reddet</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
