@@ -255,4 +255,220 @@ public sealed class ExpenseApiTests : IDisposable
         Assert.Equal("Submitted", detail.GetProperty("status").GetString());
         Assert.Equal(2, detail.GetProperty("history").GetArrayLength());
     }
+
+    private async Task<string> CreateSubmittedAsync(string title = "Taxi", decimal amount = 42.5m)
+    {
+        var created = await _client.PostAsJsonAsync("/api/expenses",
+            new { title, description = (string?)null, amount, date = "2026-01-15" });
+        var id = IdOf(await ReadJson(created));
+        await _client.PostAsync($"/api/expenses/{id}/submit", null);
+        return id;
+    }
+
+    private async Task<HttpResponseMessage> RejectAsync(string id, object body) =>
+        await _client.PostAsJsonAsync($"/api/approvals/{id}/reject", body);
+
+    [Fact]
+    public async Task Approve_moves_submitted_to_approved_and_records_manager_history()
+    {
+        var id = await CreateSubmittedAsync();
+
+        var response = await _client.PostAsJsonAsync($"/api/approvals/{id}/approve", new { });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await ReadJson(response);
+        Assert.Equal("Approved", body.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("decisionReason").ValueKind);
+
+        var history = body.GetProperty("history");
+        Assert.Equal(3, history.GetArrayLength());
+        Assert.Equal("Submitted", history[2].GetProperty("fromStatus").GetString());
+        Assert.Equal("Approved", history[2].GetProperty("toStatus").GetString());
+        Assert.Equal(JsonValueKind.Null, history[2].GetProperty("note").ValueKind);
+
+        using var db = _factory.CreateDbContext();
+        var entry = await db.StatusHistory.SingleAsync(h => h.ExpenseId == Guid.Parse(id) && h.ToStatus == ExpenseStatus.Approved);
+        Assert.Equal("manager", entry.Actor);
+        Assert.Equal("Manager", entry.Role);
+    }
+
+    [Fact]
+    public async Task Approve_without_body_and_with_note_both_succeed()
+    {
+        var withoutBody = await CreateSubmittedAsync("no body");
+        var noBody = await _client.PostAsync($"/api/approvals/{withoutBody}/approve", null);
+        Assert.Equal(HttpStatusCode.OK, noBody.StatusCode);
+
+        var withNote = await CreateSubmittedAsync("with note");
+        var response = await _client.PostAsJsonAsync($"/api/approvals/{withNote}/approve", new { note = "  looks fine  " });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var history = (await ReadJson(response)).GetProperty("history");
+        Assert.Equal("looks fine", history[2].GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task Approve_with_non_string_note_returns_400()
+    {
+        var id = await CreateSubmittedAsync();
+
+        var response = await _client.PostAsJsonAsync($"/api/approvals/{id}/approve", new { note = 5 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True((await ReadJson(response)).GetProperty("errors").TryGetProperty("Note", out _));
+    }
+
+    [Fact]
+    public async Task Reject_with_reason_sets_decision_reason_and_records_history()
+    {
+        var id = await CreateSubmittedAsync();
+
+        var response = await RejectAsync(id, new { reason = "  Missing receipt  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await ReadJson(response);
+        Assert.Equal("Rejected", body.GetProperty("status").GetString());
+        Assert.Equal("Missing receipt", body.GetProperty("decisionReason").GetString());
+        var history = body.GetProperty("history");
+        Assert.Equal("Submitted", history[2].GetProperty("fromStatus").GetString());
+        Assert.Equal("Rejected", history[2].GetProperty("toStatus").GetString());
+
+        using var db = _factory.CreateDbContext();
+        var entry = await db.StatusHistory.SingleAsync(h => h.ExpenseId == Guid.Parse(id) && h.ToStatus == ExpenseStatus.Rejected);
+        Assert.Equal("manager", entry.Actor);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"reason\": \"\"}")]
+    [InlineData("{\"reason\": \"   \"}")]
+    [InlineData("{\"reason\": null}")]
+    public async Task Reject_without_reason_returns_400_and_changes_nothing(string json)
+    {
+        var id = await CreateSubmittedAsync();
+
+        var response = await _client.PostAsync($"/api/approvals/{id}/reject",
+            new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True((await ReadJson(response)).GetProperty("errors").TryGetProperty("Reason", out _));
+        var detail = await ReadJson(await _client.GetAsync($"/api/expenses/{id}"));
+        Assert.Equal("Submitted", detail.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task Reject_with_non_string_reason_returns_400()
+    {
+        var id = await CreateSubmittedAsync();
+        var response = await RejectAsync(id, new { reason = 12 });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True((await ReadJson(response)).GetProperty("errors").TryGetProperty("Reason", out _));
+    }
+
+    [Theory]
+    [InlineData(ExpenseStatus.Draft)]
+    [InlineData(ExpenseStatus.Approved)]
+    [InlineData(ExpenseStatus.Rejected)]
+    public async Task Approve_and_reject_from_non_submitted_return_409(ExpenseStatus status)
+    {
+        var created = await CreateDraftAsync();
+        var id = IdOf(created);
+        if (status != ExpenseStatus.Draft)
+        {
+            await SetStatusAsync(id, status);
+        }
+
+        var approve = await _client.PostAsync($"/api/approvals/{id}/approve", null);
+        var reject = await RejectAsync(id, new { reason = "nope" });
+
+        Assert.Equal(HttpStatusCode.Conflict, approve.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, reject.StatusCode);
+        Assert.True((await ReadJson(approve)).TryGetProperty("message", out _));
+    }
+
+    [Fact]
+    public async Task Decided_expense_cannot_be_approved_or_rejected_again()
+    {
+        var approved = await CreateSubmittedAsync("approved");
+        await _client.PostAsync($"/api/approvals/{approved}/approve", null);
+        var rejected = await CreateSubmittedAsync("rejected");
+        await RejectAsync(rejected, new { reason = "bad" });
+
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"/api/approvals/{approved}/approve", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await RejectAsync(approved, new { reason = "late" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"/api/approvals/{rejected}/approve", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await RejectAsync(rejected, new { reason = "again" })).StatusCode);
+
+        // A rejected reason is not overwritten by the failed attempts, and no history was added.
+        var detail = await ReadJson(await _client.GetAsync($"/api/approvals/{rejected}"));
+        Assert.Equal("bad", detail.GetProperty("decisionReason").GetString());
+        Assert.Equal(3, detail.GetProperty("history").GetArrayLength());
+        var approvedDetail = await ReadJson(await _client.GetAsync($"/api/approvals/{approved}"));
+        Assert.Equal(3, approvedDetail.GetProperty("history").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Approve_and_reject_unknown_id_return_404()
+    {
+        var id = Guid.NewGuid();
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync($"/api/approvals/{id}/approve", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await RejectAsync(id.ToString(), new { reason = "x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/approvals/{id}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Pending_lists_only_submitted_oldest_submission_first()
+    {
+        var first = await CreateSubmittedAsync("first");
+        var decided = await CreateSubmittedAsync("decided");
+        await _client.PostAsync($"/api/approvals/{decided}/approve", null);
+        var second = await CreateSubmittedAsync("second");
+        await CreateDraftAsync("draft only");
+
+        var pending = await ReadJson(await _client.GetAsync("/api/approvals/pending"));
+
+        Assert.Equal(2, pending.GetArrayLength());
+        Assert.Equal(first, pending[0].GetProperty("id").GetString());
+        Assert.Equal(second, pending[1].GetProperty("id").GetString());
+        var item = pending[0];
+        Assert.Equal("first", item.GetProperty("title").GetString());
+        Assert.Equal(42.5m, item.GetProperty("amount").GetDecimal());
+        Assert.Equal("2026-01-15", item.GetProperty("date").GetString());
+        Assert.True(item.TryGetProperty("submittedAt", out _));
+        Assert.False(item.TryGetProperty("status", out _));
+    }
+
+    [Fact]
+    public async Task Summary_is_all_zero_when_there_are_no_expenses()
+    {
+        var summary = await ReadJson(await _client.GetAsync("/api/approvals/summary"));
+
+        var counts = summary.GetProperty("countsByStatus");
+        Assert.Equal(0, counts.GetProperty("Draft").GetInt32());
+        Assert.Equal(0, counts.GetProperty("Submitted").GetInt32());
+        Assert.Equal(0, counts.GetProperty("Approved").GetInt32());
+        Assert.Equal(0, counts.GetProperty("Rejected").GetInt32());
+        Assert.Equal(0m, summary.GetProperty("approvedTotal").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Summary_counts_every_status_and_totals_only_approved_amounts()
+    {
+        await CreateDraftAsync("draft");
+        await CreateSubmittedAsync("pending", 10m);
+        var approvedA = await CreateSubmittedAsync("approved a", 100.25m);
+        await _client.PostAsync($"/api/approvals/{approvedA}/approve", null);
+        var approvedB = await CreateSubmittedAsync("approved b", 0.75m);
+        await _client.PostAsync($"/api/approvals/{approvedB}/approve", null);
+        var rejected = await CreateSubmittedAsync("rejected", 999m);
+        await RejectAsync(rejected, new { reason = "no" });
+
+        var summary = await ReadJson(await _client.GetAsync("/api/approvals/summary"));
+
+        var counts = summary.GetProperty("countsByStatus");
+        Assert.Equal(1, counts.GetProperty("Draft").GetInt32());
+        Assert.Equal(1, counts.GetProperty("Submitted").GetInt32());
+        Assert.Equal(2, counts.GetProperty("Approved").GetInt32());
+        Assert.Equal(1, counts.GetProperty("Rejected").GetInt32());
+        Assert.Equal(101m, summary.GetProperty("approvedTotal").GetDecimal());
+    }
 }
