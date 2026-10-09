@@ -1,71 +1,131 @@
-# Todo API
+# Customer API
 
-.NET 8 minimal API, EF Core ve SQLite ile yazılmış basit bir Todo CRUD servisi.
+A small customer tracking service: a .NET 8 minimal API with EF Core and SQLite.
+Customer records persist in a SQLite file, so they survive restarts.
 
-## Gereksinimler
+## Requirements
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 
-## Çalıştırma
+## Install
 
 ```bash
-# 1. EF Core CLI aracını geri yükle (repo'da yerel tool olarak tanımlı)
-dotnet tool restore
+dotnet restore
+```
 
-# 2. Veritabanını oluştur / migration'ları uygula
-dotnet ef database update --project src/TodoApi
+## Start
 
-# 3. Uygulamayı başlat
+```bash
 dotnet run --project src/TodoApi
 ```
 
-Uygulama açılışta bekleyen migration'ları otomatik uygular, yani 2. adım isteğe bağlıdır.
-SQLite dosyası (`todos.db`) uygulamanın çalıştığı dizinde oluşturulur. Bağlantı cümlesi
-`src/TodoApi/appsettings.json` içindeki `ConnectionStrings:Default` ile değiştirilebilir.
-
-Konsolda yazan adresi kullanın (varsayılan: `http://localhost:5xxx`). Belirli bir port için:
+The app applies pending database migrations on startup. The API listens on the
+address printed to the console (see `src/TodoApi/Properties/launchSettings.json`
+for the default). To pick a port:
 
 ```bash
 dotnet run --project src/TodoApi --urls http://localhost:5000
 ```
 
-## Endpointler
+## Test
 
-| Metot  | Yol           | Açıklama                 | Başarılı yanıt  |
-|--------|---------------|--------------------------|-----------------|
-| GET    | `/todos`      | Tüm todo'ları listeler   | `200 OK`        |
-| GET    | `/todos/{id}` | Tek bir todo getirir     | `200 OK` / `404`|
-| POST   | `/todos`      | Yeni todo oluşturur      | `201 Created`   |
-| PUT    | `/todos/{id}` | Todo'yu günceller        | `200 OK` / `404`|
-| DELETE | `/todos/{id}` | Todo'yu siler            | `204 No Content` / `404` |
+```bash
+dotnet test tests/TodoApi.Tests
+```
 
-`title` boş olamaz ve en fazla 200 karakter olabilir; aksi halde `400` (ValidationProblem) döner.
+Tests run the real app against temporary SQLite files; they do not touch your data.
 
-### Model
+## Environment variables
+
+| Variable           | Default                                   | Purpose                                      |
+|--------------------|-------------------------------------------|----------------------------------------------|
+| `CUSTOMERS_DB_PATH`| `src/TodoApi/customers.db` (project dir)  | Path to the SQLite database file. Created if missing. |
+
+Example:
+
+```bash
+CUSTOMERS_DB_PATH=/var/lib/customers/customers.db dotnet run --project src/TodoApi
+```
+
+## Endpoints
+
+All bodies are JSON. Timestamps are UTC ISO 8601.
+
+| Method | Path                    | Success                | Errors                  |
+|--------|-------------------------|------------------------|-------------------------|
+| GET    | `/api/customers?search=`| `200` array            | —                       |
+| POST   | `/api/customers`        | `201` customer         | `400`                   |
+| GET    | `/api/customers/{id}`   | `200` customer         | `404`                   |
+| PUT    | `/api/customers/{id}`   | `200` customer         | `400`, `404`            |
+| DELETE | `/api/customers/{id}`   | `204` no content       | `404`                   |
+
+Any endpoint can also return `500` with `{"error":"An unexpected error occurred."}`.
+
+### Customer
 
 ```json
 {
   "id": 1,
-  "title": "Süt al",
-  "isCompleted": false,
-  "createdAt": "2026-09-24T20:22:29.1029439Z"
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "phone": "+44 20 7946 0000",
+  "createdAt": "2026-10-09T12:00:00Z",
+  "updatedAt": "2026-10-09T12:00:00Z"
 }
 ```
 
-`id` ve `createdAt` (UTC) sunucu tarafından atanır.
+`id`, `createdAt` and `updatedAt` are set by the server. `email` and `phone` are
+`null` when absent.
 
-### Örnek istekler
+### Request body (POST and PUT)
 
-```bash
-curl -X POST http://localhost:5000/todos -H "Content-Type: application/json" -d '{"title":"Süt al"}'
-curl http://localhost:5000/todos
-curl http://localhost:5000/todos/1
-curl -X PUT http://localhost:5000/todos/1 -H "Content-Type: application/json" -d '{"title":"Süt al","isCompleted":true}'
-curl -X DELETE http://localhost:5000/todos/1
+```json
+{ "name": "Ada Lovelace", "email": "ada@example.com", "phone": "+44 20 7946 0000" }
 ```
 
-## Yeni migration ekleme
+- `name`: required; must be non-empty after trimming.
+- `email`: optional; if non-blank it must look like `local@domain.tld` (no spaces, one `@`).
+- `phone`: optional; stored as given (trimmed), no format check.
+- Blank `email`/`phone` are stored as `null`.
+- PUT replaces the record: omitted or blank `email`/`phone` are cleared.
+
+### Search
+
+`GET /api/customers?search=ada` returns customers whose `name` or `email` contains
+the text, ignoring case. A blank or missing `search` returns all customers. No match
+returns `[]`. Results are ordered by `id`.
+
+### Errors
+
+Validation failures (`400`):
+
+```json
+{ "error": "Validation failed.", "errors": { "name": ["Name is required."] } }
+```
+
+Malformed JSON, a non-object body or a wrong field type (e.g. `"name": 123`) returns
+`400` with `{ "error": "Request body must be valid JSON with string fields: name, email, phone." }`.
+
+Unknown ids return `404` with `{ "error": "Customer 42 was not found." }`.
+
+## Examples
 
 ```bash
-dotnet ef migrations add <MigrationAdi> --project src/TodoApi
+curl -X POST http://localhost:5000/api/customers \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ada Lovelace","email":"ada@example.com"}'
+
+curl "http://localhost:5000/api/customers?search=ada"
+curl http://localhost:5000/api/customers/1
+curl -X PUT http://localhost:5000/api/customers/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ada Lovelace","phone":"555-0100"}'
+curl -X DELETE http://localhost:5000/api/customers/1
+```
+
+## Database migrations
+
+```bash
+dotnet tool restore
+dotnet ef migrations add <Name> --project src/TodoApi --output-dir Migrations
 ```

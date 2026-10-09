@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using TodoApi.Data;
 
@@ -12,7 +13,9 @@ public record CustomerResponse(int Id, string Name, string? Email, string? Phone
         new(c.Id, c.Name, c.Email, c.Phone, c.CreatedAt, c.UpdatedAt);
 }
 
-public record ErrorResponse(string Error, IDictionary<string, string[]>? Errors = null);
+public record ErrorResponse(
+    string Error,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IDictionary<string, string[]>? Errors = null);
 
 public sealed record ValidCustomer(string Name, string? Email, string? Phone);
 
