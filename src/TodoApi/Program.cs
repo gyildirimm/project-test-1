@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using TodoApi.Customers;
+using TodoApi.CustomerImports;
 using TodoApi.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,6 +32,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapCustomerEndpoints();
+app.MapCustomerImportEndpoints();
 
 app.Run();
 
