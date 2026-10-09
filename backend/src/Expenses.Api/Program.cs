@@ -27,6 +27,7 @@ if (Directory.Exists(frontendPath))
 }
 
 app.MapExpenseEndpoints();
+app.MapManagerEndpoints();
 
 app.Run();
 

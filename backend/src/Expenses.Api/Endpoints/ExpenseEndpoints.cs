@@ -142,7 +142,7 @@ public static class ExpenseEndpoints
         });
     }
 
-    private static ExpenseDetail ToDetail(Expense e) => new(
+    internal static ExpenseDetail ToDetail(Expense e) => new(
         e.Id, e.Title, e.Description, e.Amount, e.Date,
         e.Status.ToString(), e.CreatedAt, e.UpdatedAt,
         e.StatusHistory
@@ -151,7 +151,7 @@ public static class ExpenseEndpoints
                 h.FromStatus?.ToString(), h.ToStatus.ToString(), h.Reason, h.OccurredAt))
             .ToList());
 
-    private static IResult NotFoundProblem(int id) => Results.Problem(
+    internal static IResult NotFoundProblem(int id) => Results.Problem(
         title: "Not Found",
         detail: $"Expense {id} was not found.",
         statusCode: StatusCodes.Status404NotFound);

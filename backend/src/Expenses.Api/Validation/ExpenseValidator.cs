@@ -1,6 +1,7 @@
 using System.Globalization;
 using Expenses.Api.Contracts;
 
+
 namespace Expenses.Api.Validation;
 
 public record ValidExpense(string Title, string? Description, decimal Amount, DateOnly Date);
@@ -46,6 +47,22 @@ public static class ExpenseValidator
             request.Amount,
             date);
         return true;
+    }
+
+    // Rejection reason: required after trim, same 500-character cap as StatusHistoryEntry.Reason.
+    public static bool TryValidateRejectReason(RejectRequest? request, out string? reason, out Dictionary<string, string[]> errors)
+    {
+        var trimmed = request?.Reason?.Trim();
+        var found = new Dictionary<string, List<string>>();
+
+        if (string.IsNullOrEmpty(trimmed))
+            Add(found, "reason", "Reason is required.");
+        else if (trimmed.Length > 500)
+            Add(found, "reason", "Reason must be at most 500 characters.");
+
+        errors = found.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray());
+        reason = errors.Count == 0 ? trimmed : null;
+        return errors.Count == 0;
     }
 
     private static void Add(Dictionary<string, List<string>> errors, string field, string message)
