@@ -62,6 +62,46 @@
         <tbody id="customer-rows"></tbody>
       </table>
     </section>
+
+    <section class="import-section" aria-labelledby="import-title">
+      <h2 id="import-title">CSV ile müşteri içe aktar</h2>
+      <p class="hint">Dosyanın ilk satırı başlık olmalı ve bir <strong>name</strong> sütunu içermelidir. <strong>email</strong> ve <strong>phone</strong> sütunları isteğe bağlıdır.</p>
+
+      <div class="field">
+        <label for="csv-file">CSV dosyası</label>
+        <input id="csv-file" type="file" accept=".csv,text/csv">
+      </div>
+
+      <p id="import-error" class="error" role="alert" hidden></p>
+      <p id="import-result" class="status" aria-live="polite" hidden></p>
+
+      <form id="import-preview" class="import-preview" hidden>
+        <h3>Önizleme</h3>
+        <p id="preview-file" class="hint"></p>
+        <dl id="preview-totals" class="totals"></dl>
+        <div id="preview-table" class="table-wrap"></div>
+        <p class="hint">Önizleme henüz hiçbir şeyi kaydetmedi. Kaydetmek için “İçe aktar” seçin.</p>
+        <div class="form-actions">
+          <button id="import-confirm" type="submit">İçe aktar</button>
+          <button id="import-cancel" type="button">İptal</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="list-section" aria-labelledby="history-title">
+      <h2 id="history-title">İçe aktarma geçmişi</h2>
+      <p id="history-status" class="status">Yükleniyor…</p>
+      <ul id="history-list" class="history-list" hidden></ul>
+
+      <section id="import-detail" class="import-detail" aria-labelledby="detail-title" hidden>
+        <h3 id="detail-title"></h3>
+        <dl id="detail-totals" class="totals"></dl>
+        <h4>Hata raporu</h4>
+        <div id="detail-errors" class="table-wrap"></div>
+        <h4>Tekrar eden satırlar</h4>
+        <div id="detail-duplicates" class="table-wrap"></div>
+      </section>
+    </section>
   </main>
 
   <script src="app.js"></script>

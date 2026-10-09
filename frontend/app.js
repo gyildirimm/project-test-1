@@ -1,5 +1,7 @@
 // Set this to wherever the customer API runs (see README).
 const API_BASE = "http://localhost:5000/api/customers";
+// CSV import endpoints sit next to the customer endpoints.
+const IMPORT_BASE = API_BASE.replace(/\/customers$/, "/customer-imports");
 
 // Same rule as the API, so the browser rejects what the server would reject.
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -32,15 +34,16 @@ class ApiError extends Error {
   }
 }
 
-async function request(path, options = {}) {
+async function request(path, options = {}, base = API_BASE) {
   let res;
   try {
-    res = await fetch(API_BASE + path, {
+    res = await fetch(base + path, {
       ...options,
-      headers: options.body ? { "Content-Type": "application/json" } : undefined,
+      // Only JSON bodies get a Content-Type; FormData sets its own multipart boundary.
+      headers: typeof options.body === "string" ? { "Content-Type": "application/json" } : undefined,
     });
   } catch {
-    throw new ApiError("Could not reach the API at " + API_BASE + ". Is it running?");
+    throw new ApiError("Could not reach the API at " + base + ". Is it running?");
   }
 
   if (!res.ok) {
@@ -75,6 +78,19 @@ const api = {
   create: (values) => request("", { method: "POST", body: JSON.stringify(values) }),
   update: (id, values) => request("/" + id, { method: "PUT", body: JSON.stringify(values) }),
   remove: (id) => request("/" + id, { method: "DELETE" }),
+};
+
+function fileForm(file) {
+  const body = new FormData();
+  body.append("file", file, file.name);
+  return body;
+}
+
+const importApi = {
+  list: () => request("", {}, IMPORT_BASE),
+  get: (id) => request("/" + id, {}, IMPORT_BASE),
+  preview: (file) => request("/preview", { method: "POST", body: fileForm(file) }, IMPORT_BASE),
+  commit: (file) => request("", { method: "POST", body: fileForm(file) }, IMPORT_BASE),
 };
 
 // --- Messages ----------------------------------------------------------
@@ -277,6 +293,285 @@ async function deleteCustomer(customer) {
   }
 }
 
+// --- CSV import --------------------------------------------------------
+
+const importInput = document.getElementById("csv-file");
+const importError = document.getElementById("import-error");
+const importResult = document.getElementById("import-result");
+const previewForm = document.getElementById("import-preview");
+const previewFile = document.getElementById("preview-file");
+const previewTotals = document.getElementById("preview-totals");
+const previewTable = document.getElementById("preview-table");
+const confirmButton = document.getElementById("import-confirm");
+const cancelImportButton = document.getElementById("import-cancel");
+const historyStatus = document.getElementById("history-status");
+const historyList = document.getElementById("history-list");
+const detailSection = document.getElementById("import-detail");
+const detailTitle = document.getElementById("detail-title");
+const detailTotals = document.getElementById("detail-totals");
+const detailErrors = document.getElementById("detail-errors");
+const detailDuplicates = document.getElementById("detail-duplicates");
+
+// Turkish labels for the statuses the API returns.
+const STATUS_LABELS = {
+  Importable: "Eklenebilir",
+  Invalid: "Geçersiz",
+  DuplicateInFile: "Dosyada tekrar",
+  AlreadyExists: "Zaten var",
+  Imported: "Eklendi",
+};
+
+const COLUMNS = {
+  line: { label: "Satır", value: (row) => row.lineNumber },
+  name: { label: "Ad", value: (row) => row.name },
+  email: { label: "E-posta", value: (row) => row.email },
+  phone: { label: "Telefon", value: (row) => row.phone },
+  status: { label: "Durum", value: (row) => STATUS_LABELS[row.status] || row.status },
+  reason: { label: "Neden", value: (row) => row.reason },
+  original: { label: "Özgün satır", value: (row) => row.duplicateOfLineNumber },
+};
+const PREVIEW_COLUMNS = [COLUMNS.line, COLUMNS.name, COLUMNS.email, COLUMNS.phone, COLUMNS.status, COLUMNS.reason, COLUMNS.original];
+const ERROR_COLUMNS = [COLUMNS.line, COLUMNS.name, COLUMNS.email, COLUMNS.phone, COLUMNS.reason];
+const DUPLICATE_COLUMNS = [COLUMNS.line, COLUMNS.name, COLUMNS.email, COLUMNS.phone, COLUMNS.status, COLUMNS.original];
+
+// The file of the preview on screen, and its preview result. Nothing is saved until confirm.
+let pendingImport = null;
+let importBusy = false;
+let selectedImportId = null;
+let historyItems = [];
+let latestHistoryRequest = 0;
+let latestDetailRequest = 0;
+
+function showImportError(message) {
+  importError.textContent = message;
+  importError.hidden = false;
+}
+
+function clearImportError() {
+  importError.textContent = "";
+  importError.hidden = true;
+}
+
+function updateImportControls() {
+  importInput.disabled = importBusy;
+  confirmButton.disabled = importBusy || !pendingImport;
+  cancelImportButton.disabled = importBusy;
+  previewForm.hidden = !pendingImport;
+}
+
+function discardPreview() {
+  pendingImport = null;
+  importInput.value = "";
+}
+
+function formatDate(value) {
+  return new Date(value).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function note(text) {
+  const p = document.createElement("p");
+  p.className = "hint";
+  p.textContent = text;
+  return p;
+}
+
+// Every cell is set with textContent, so file contents are never parsed as HTML.
+function buildRowsTable(rows, columns) {
+  const table = document.createElement("table");
+  table.className = "customer-table import-table";
+
+  const headRow = document.createElement("tr");
+  for (const column of columns) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = column.label;
+    headRow.append(th);
+  }
+  const thead = document.createElement("thead");
+  thead.append(headRow);
+
+  const tbody = document.createElement("tbody");
+  tbody.append(
+    ...rows.map((row) => {
+      const tr = document.createElement("tr");
+      for (const column of columns) {
+        const value = column.value(row);
+        const td = document.createElement("td");
+        td.textContent = value === null || value === undefined || value === "" ? "—" : String(value);
+        tr.append(td);
+      }
+      return tr;
+    }),
+  );
+
+  table.append(thead, tbody);
+  return table;
+}
+
+function renderTotals(dl, items) {
+  dl.replaceChildren(
+    ...items.flatMap(([label, value]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.textContent = String(value);
+      return [dt, dd];
+    }),
+  );
+}
+
+function renderPreview() {
+  const { file, preview } = pendingImport;
+  previewFile.textContent = "Dosya: " + file.name;
+  renderTotals(previewTotals, [
+    ["Toplam satır", preview.totalRows],
+    ["Eklenebilir", preview.importableCount],
+    ["Geçersiz", preview.invalidCount],
+    ["Dosyada tekrar", preview.duplicateInFileCount],
+    ["Zaten var", preview.alreadyExistsCount],
+  ]);
+  previewTable.replaceChildren(buildRowsTable(preview.rows, PREVIEW_COLUMNS));
+}
+
+async function previewImport(file) {
+  importBusy = true;
+  clearImportError();
+  importResult.hidden = true;
+  updateImportControls();
+  try {
+    const preview = await importApi.preview(file);
+    pendingImport = { file, preview };
+    renderPreview();
+  } catch (err) {
+    // Nothing was saved. An earlier preview stays on screen so it can still be confirmed.
+    importInput.value = "";
+    showImportError(err.message);
+  } finally {
+    importBusy = false;
+    updateImportControls();
+  }
+}
+
+async function confirmImport(event) {
+  event.preventDefault();
+  if (importBusy || !pendingImport) return;
+
+  importBusy = true;
+  clearImportError();
+  updateImportControls();
+  try {
+    const detail = await importApi.commit(pendingImport.file);
+    discardPreview();
+    importResult.textContent = detail.importedCount + " müşteri eklendi.";
+    importResult.hidden = false;
+    selectedImportId = detail.id;
+    showDetail(detail);
+    // Both lists are reloaded from the server so they reflect what was saved.
+    loadCustomers();
+    loadImportHistory();
+  } catch (err) {
+    // Keep the preview so the user can retry or cancel.
+    showImportError(err.message);
+  } finally {
+    importBusy = false;
+    updateImportControls();
+  }
+}
+
+function cancelImport() {
+  discardPreview();
+  clearImportError();
+  updateImportControls();
+}
+
+async function loadImportHistory() {
+  const requestId = ++latestHistoryRequest;
+  historyStatus.textContent = "Yükleniyor…";
+  historyStatus.hidden = false;
+
+  try {
+    const imports = await importApi.list();
+    if (requestId !== latestHistoryRequest) return;
+    historyItems = imports;
+    renderHistory();
+  } catch (err) {
+    if (requestId !== latestHistoryRequest) return;
+    historyItems = [];
+    historyList.replaceChildren();
+    historyList.hidden = true;
+    historyStatus.textContent = "İçe aktarma geçmişi yüklenemedi. " + err.message;
+  }
+}
+
+function renderHistory() {
+  historyList.replaceChildren(...historyItems.map(renderHistoryItem));
+  historyList.hidden = historyItems.length === 0;
+  historyStatus.textContent = historyItems.length ? "" : "Henüz içe aktarma yapılmadı.";
+  historyStatus.hidden = historyItems.length > 0;
+}
+
+function renderHistoryItem(item) {
+  const li = document.createElement("li");
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "history-item";
+  button.setAttribute("aria-pressed", String(item.id === selectedImportId));
+  button.addEventListener("click", () => showImportDetail(item.id));
+
+  const name = document.createElement("strong");
+  name.textContent = item.fileName;
+
+  const meta = document.createElement("span");
+  meta.className = "hint";
+  meta.textContent =
+    formatDate(item.createdAt) +
+    " · " + item.totalRows + " satır" +
+    " · " + item.importedCount + " eklendi" +
+    " · " + item.invalidCount + " geçersiz" +
+    " · " + (item.duplicateInFileCount + item.alreadyExistsCount) + " tekrar";
+
+  button.append(name, meta);
+  li.append(button);
+  return li;
+}
+
+async function showImportDetail(id) {
+  const requestId = ++latestDetailRequest;
+  selectedImportId = id;
+  renderHistory();
+  clearImportError();
+
+  try {
+    const detail = await importApi.get(id);
+    if (requestId !== latestDetailRequest) return;
+    showDetail(detail);
+  } catch (err) {
+    if (requestId !== latestDetailRequest) return;
+    detailSection.hidden = true;
+    showImportError(err.message);
+  }
+}
+
+function showDetail(detail) {
+  detailTitle.textContent = detail.fileName + " · " + formatDate(detail.createdAt);
+  renderTotals(detailTotals, [
+    ["Toplam satır", detail.totalRows],
+    ["Eklenen", detail.importedCount],
+    ["Geçersiz", detail.invalidCount],
+    ["Dosyada tekrar", detail.duplicateInFileCount],
+    ["Zaten var", detail.alreadyExistsCount],
+  ]);
+
+  const invalid = detail.rows.filter((row) => row.status === "Invalid");
+  const duplicates = detail.rows.filter((row) => row.status === "DuplicateInFile" || row.status === "AlreadyExists");
+  detailErrors.replaceChildren(invalid.length ? buildRowsTable(invalid, ERROR_COLUMNS) : note("Geçersiz satır yok."));
+  detailDuplicates.replaceChildren(
+    duplicates.length ? buildRowsTable(duplicates, DUPLICATE_COLUMNS) : note("Tekrar eden satır yok."),
+  );
+  detailSection.hidden = false;
+}
+
 // --- Wiring ------------------------------------------------------------
 
 let searchTimer = null;
@@ -291,4 +586,12 @@ cancelButton.addEventListener("click", () => {
   resetForm();
 });
 
+importInput.addEventListener("change", () => {
+  const file = importInput.files[0];
+  if (file) previewImport(file);
+});
+previewForm.addEventListener("submit", confirmImport);
+cancelImportButton.addEventListener("click", cancelImport);
+
 loadCustomers();
+loadImportHistory();
