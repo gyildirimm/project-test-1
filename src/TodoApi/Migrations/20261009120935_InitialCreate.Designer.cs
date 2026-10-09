@@ -10,8 +10,8 @@ using TodoApi.Data;
 
 namespace TodoApi.Migrations
 {
-    [DbContext(typeof(TodoDbContext))]
-    [Migration("20260924202221_InitialCreate")]
+    [DbContext(typeof(CustomerDbContext))]
+    [Migration("20261009120935_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -20,7 +20,7 @@ namespace TodoApi.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.31");
 
-            modelBuilder.Entity("TodoApi.Data.Todo", b =>
+            modelBuilder.Entity("TodoApi.Data.Customer", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -29,17 +29,22 @@ namespace TodoApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("IsCompleted")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Email")
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("Title")
+                    b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Todos");
+                    b.ToTable("Customers");
                 });
 #pragma warning restore 612, 618
         }
