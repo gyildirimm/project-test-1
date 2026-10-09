@@ -20,7 +20,6 @@ public class ExpenseDbContext(DbContextOptions<ExpenseDbContext> options) : DbCo
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
             entity.Property(e => e.DecisionReason).HasMaxLength(2000);
             entity.HasIndex(e => e.Status);
-            entity.HasIndex(e => e.CreatedAt);
 
             entity.HasMany(e => e.History)
                 .WithOne()

@@ -25,11 +25,13 @@ public static class ExpenseEndpoints
                 query = query.Where(e => e.Status == parsed);
             }
 
-            var items = await query
+            // SQLite cannot translate DateTimeOffset ordering, so sort in memory (newest first).
+            var expenses = await query.ToListAsync();
+            var items = expenses
                 .OrderByDescending(e => e.CreatedAt)
                 .ThenBy(e => e.Id)
-                .Select(e => ExpenseResponse.From(e))
-                .ToListAsync();
+                .Select(ExpenseResponse.From)
+                .ToList();
             return Results.Ok(items);
         });
 
