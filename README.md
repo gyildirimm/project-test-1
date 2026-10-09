@@ -108,6 +108,74 @@ Malformed JSON, a non-object body or a wrong field type (e.g. `"name": 123`) ret
 
 Unknown ids return `404` with `{ "error": "Customer 42 was not found." }`.
 
+## CSV import
+
+Bulk-add customers from a CSV file. Upload is always two steps: preview first, then commit.
+Nothing is written by the preview.
+
+- `POST /api/customer-imports/preview`: multipart form, field `file`. Returns `200` with the
+  classification of every row and writes nothing.
+- `POST /api/customer-imports`: same upload. Re-classifies against the database at this moment,
+  inserts only `Importable` rows and records the run in history, in one transaction. Returns
+  `201` with `Location: /api/customer-imports/{id}` and the detail body. A run with zero
+  imported rows is still recorded.
+- `GET /api/customer-imports`: history, newest first (summaries only).
+- `GET /api/customer-imports/{id}`: one run with its rows ordered by `lineNumber`, or `404`.
+  The error report is the rows whose `status` is `Invalid`.
+
+File format: UTF-8 (a BOM is allowed), comma-delimited, double-quoted fields (`""` for a
+literal quote, line breaks allowed inside quotes). The header row is required and matched
+case-insensitively. `name` is required; `email` and `phone` are optional; other columns are
+ignored. Blank lines are skipped. A file with no `name` column, no content, or only a header
+returns `400` with `{ "error": "..." }`. Line numbers are physical line numbers, the header is line 1.
+
+Row rules are the same as customer create: name is required after trimming, a non-blank email
+must match the customer email check, and phone is trimmed.
+
+Row statuses:
+
+| Status           | Meaning |
+|------------------|---------|
+| `Importable`     | Valid and new. Inserted on commit. Preview only. |
+| `Imported`       | Inserted by this run. Commit and history only. `customerId` is set. |
+| `Invalid`        | Fails validation. `reason` explains why. |
+| `DuplicateInFile`| Same key as an earlier valid row. `duplicateOfLineNumber` points to that row. |
+| `AlreadyExists`  | Same key as a customer already in the database. |
+
+**Duplicate key.** A row with an email is identified by its lowercased, trimmed email. A row
+without an email is identified by its lowercased name plus its trimmed phone. Keys are compared
+the same way for file rows and existing customers, so a customer saved with an email is not
+matched by a file row that has no email, even with the same name and phone.
+
+Upload response shapes:
+
+```json
+{
+  "totalRows": 3, "importableCount": 1, "invalidCount": 1, "duplicateInFileCount": 0, "alreadyExistsCount": 1,
+  "rows": [
+    { "lineNumber": 2, "name": "Ada", "email": "ada@example.com", "phone": null,
+      "status": "Importable", "reason": null, "duplicateOfLineNumber": null, "customerId": null }
+  ]
+}
+```
+
+History summary and detail:
+
+```json
+{ "id": 1, "fileName": "members.csv", "createdAt": "2026-10-09T12:00:00Z", "totalRows": 3,
+  "importedCount": 1, "invalidCount": 1, "duplicateInFileCount": 0, "alreadyExistsCount": 1 }
+```
+
+The detail adds `"rows": [...]` with the same row shape, where `status` is `Imported` for inserted rows.
+The `name`, `email` and `phone` values are the raw cell values as uploaded. The file itself is not stored.
+
+```bash
+curl -F "file=@members.csv" http://localhost:5000/api/customer-imports/preview
+curl -F "file=@members.csv" http://localhost:5000/api/customer-imports
+curl http://localhost:5000/api/customer-imports
+curl http://localhost:5000/api/customer-imports/1
+```
+
 ## Examples
 
 ```bash
