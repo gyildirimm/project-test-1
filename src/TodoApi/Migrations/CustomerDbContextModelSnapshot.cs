@@ -43,6 +43,94 @@ namespace TodoApi.Migrations
 
                     b.ToTable("Customers");
                 });
+
+            modelBuilder.Entity("TodoApi.Data.CustomerImport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AlreadyExistsCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DuplicateInFileCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ImportedCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("InvalidCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CustomerImports");
+                });
+
+            modelBuilder.Entity("TodoApi.Data.CustomerImportRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("CustomerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CustomerImportId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("DuplicateOfLineNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RawEmail")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RawName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RawPhone")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerImportId", "LineNumber");
+
+                    b.ToTable("CustomerImportRows");
+                });
+
+            modelBuilder.Entity("TodoApi.Data.CustomerImportRow", b =>
+                {
+                    b.HasOne("TodoApi.Data.CustomerImport", null)
+                        .WithMany("Rows")
+                        .HasForeignKey("CustomerImportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TodoApi.Data.CustomerImport", b =>
+                {
+                    b.Navigation("Rows");
+                });
 #pragma warning restore 612, 618
         }
     }
