@@ -7,6 +7,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B7D8A954-42F
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExpenseApi", "src\ExpenseApi\ExpenseApi.csproj", "{9465601F-BDBE-465B-BB83-D46ACC2E435B}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{B74F21AD-C330-480B-8FDC-479F648C6696}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExpenseApi.Tests", "tests\ExpenseApi.Tests\ExpenseApi.Tests.csproj", "{E1CA0496-3648-4735-A70E-10C94727695A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,8 +24,13 @@ Global
 		{9465601F-BDBE-465B-BB83-D46ACC2E435B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9465601F-BDBE-465B-BB83-D46ACC2E435B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9465601F-BDBE-465B-BB83-D46ACC2E435B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1CA0496-3648-4735-A70E-10C94727695A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1CA0496-3648-4735-A70E-10C94727695A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1CA0496-3648-4735-A70E-10C94727695A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1CA0496-3648-4735-A70E-10C94727695A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{9465601F-BDBE-465B-BB83-D46ACC2E435B} = {B7D8A954-42FF-4C0C-9DB9-3C110D4F06B2}
+		{E1CA0496-3648-4735-A70E-10C94727695A} = {B74F21AD-C330-480B-8FDC-479F648C6696}
 	EndGlobalSection
 EndGlobal
