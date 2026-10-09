@@ -1,0 +1,12 @@
+{
+  "name": "customer-ui",
+  "private": true,
+  "description": "Static customer UI. No runtime dependencies; Playwright is only used for tests.",
+  "scripts": {
+    "start": "node serve.mjs",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0"
+  }
+}
